@@ -17,11 +17,11 @@ contract YourContract {
     address public immutable owner;
     string public greeting = "Building Unstoppable Apps!!!";
     bool public premium = false;
-    uint256 public totalCounter = 0;
+    uint public totalCounter = 0;
     mapping(address => uint) public userGreetingCounter;
 
     // Events: a way to emit log statements from smart contract that can be listened to by external parties
-    event GreetingChange(address indexed greetingSetter, string newGreeting, bool premium, uint256 value);
+    event GreetingChange(address indexed greetingSetter, string newGreeting, bool premium, uint value);
 
     // Constructor: Called once on contract deployment
     // Check packages/hardhat/deploy/00_deploy_your_contract.ts
@@ -75,4 +75,91 @@ contract YourContract {
      * Function that allows the contract to receive ETH
      */
     receive() external payable {}
+
+    // Структура для описания аукциона
+    struct Auction {
+        uint tokenId;
+        address highestBidder;
+        uint highestBid;
+        uint endTime;
+        uint minIncrement;
+        bool active;
+    }
+
+    mapping(uint => Auction) public auctions;
+    uint public auctionCounter;
+
+    mapping(address => uint[]) public userNFTs;
+
+    // События
+    event AuctionCreated(uint auctionId, uint tokenId, uint endTime, uint minIncrement);
+    event NewBid(uint auctionId, address bidder, uint amount);
+    event AuctionEnded(uint auctionId, address winner, uint amount);
+
+    // Создать аукцион
+    function createAuction(
+        uint _tokenId,
+        uint _duration,
+        uint _minIncrement
+    ) external {
+        // Создаем аукцион
+        auctionCounter++;
+        auctions[auctionCounter] = Auction({
+            tokenId: _tokenId,
+            highestBidder: address(0),
+            highestBid: 0,
+            endTime: block.timestamp + _duration,
+            minIncrement: _minIncrement,
+            active: true
+        });
+
+        emit AuctionCreated(auctionCounter, _tokenId, block.timestamp + _duration, _minIncrement);
+    }
+
+    // Сделать ставку
+    function placeBid(uint _auctionId) external payable {
+        Auction storage auction = auctions[_auctionId];
+
+        require(auction.active, "Auction is not active");
+        require(block.timestamp < auction.endTime, "Auction has ended");
+        require(msg.value >= auction.highestBid + auction.minIncrement, "Bid is too low");
+
+        // Возвращаем ставку предыдущему лидеру, если он был
+        if (auction.highestBidder != address(0)) {
+            payable(auction.highestBidder).transfer(auction.highestBid);
+        }
+
+        // Обновляем данные аукциона
+        auction.highestBidder = msg.sender;
+        auction.highestBid = msg.value;
+
+        emit NewBid(_auctionId, msg.sender, msg.value);
+    }
+
+    // Завершить аукцион
+    function endAuction(uint _auctionId) external {
+        Auction storage auction = auctions[_auctionId];
+
+        require(auction.active, "Auction is not active");
+        require(block.timestamp >= auction.endTime || msg.sender == owner, "Auction is still ongoing");
+
+        auction.active = false;
+
+        if (auction.highestBidder != address(0)) {
+            // Добавляем NFT победителю в список
+            userNFTs[auction.highestBidder].push(auction.tokenId);
+
+            // Отправляем средства владельцу
+            payable(owner).transfer(auction.highestBid);
+        } else {
+            // NFT остается у владельца, если не было ставок
+        }
+
+        emit AuctionEnded(_auctionId, auction.highestBidder, auction.highestBid);
+    }
+
+    // Получить список NFT пользователя
+    function getUserNFTs(address _user) external view returns (uint[] memory) {
+        return userNFTs[_user];
+    }
 }
