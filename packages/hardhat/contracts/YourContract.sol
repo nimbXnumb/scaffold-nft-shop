@@ -120,8 +120,8 @@ contract YourContract {
     function placeBid(uint _auctionId) external payable {
         Auction storage auction = auctions[_auctionId];
 
-        require(auction.active, "Auction is not active");
         require(block.timestamp < auction.endTime, "Auction has ended");
+        require(auction.active, "Auction is not active");
         require(msg.value >= auction.highestBid + auction.minIncrement, "Bid is too low");
 
         // Возвращаем ставку предыдущему лидеру, если он был
